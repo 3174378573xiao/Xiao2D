@@ -1,17 +1,17 @@
-#include "XUI.h"
+#include "Xiao2D.h"
 #include <iostream>
 #include <cmath>
 
 int main()
 {
-    if (XUI::App::init() != 0)
+    if (Xiao2D::App::init() != 0)
     {
-        std::cerr << "XUI App初始化失败\n";
+        std::cerr << "Xiao2D App初始化失败\n";
         return -1;
     }
 
     // ========== 窗口1：几何图形演示窗口 ==========
-    XUI::Window winGeo("几何测试窗口", 900, 700);
+    Xiao2D::Window winGeo("几何测试窗口", 900, 700);
 
     // 动画变量
     float rotateAngle = 0.0f;
@@ -23,21 +23,21 @@ int main()
         circleOffsetX = std::sin(rotateAngle) * 180.0f;
 
         // ---------------- 1.绘制轴对齐矩形 ----------------
-        XUI::DrawPen penRect;
+        Xiao2D::DrawPen penRect;
         penRect
             .setFillColor({0.15f, 0.45f, 0.70f, 1.0f})
             .setLineColor({1.0f, 1.0f, 1.0f, 1.0f})
             .setLineWidth(3.0f)
             .setFilledWithBorder(true);
 
-        XUI::Rect rectA = XUI::Rect::CreateWithTLWH({40, 40}, 220, 140);
+        Xiao2D::Rect rectA = Xiao2D::Rect::CreateWithTLWH({40, 40}, 220, 140);
         winGeo.draw(rectA, penRect);
 
         // ---------------- 2.斜矩形（平行四边形） ----------------
-        XUI::Point midTop{480, 110};
-        XUI::Point midBot{620, 240};
-        XUI::Rect rectSlant = XUI::Rect::CreateFromTwoMidPoints(midTop, midBot, 160);
-        XUI::DrawPen penSlant;
+        Xiao2D::Point midTop{480, 110};
+        Xiao2D::Point midBot{620, 240};
+        Xiao2D::Rect rectSlant = Xiao2D::Rect::CreateFromTwoMidPoints(midTop, midBot, 160);
+        Xiao2D::DrawPen penSlant;
         penSlant
             .setFillColor({0.7f, 0.2f, 0.3f, 0.85f})
             .setLineColor({1,1,0,1})
@@ -45,39 +45,39 @@ int main()
         winGeo.draw(rectSlant, penSlant);
 
         // ----------------3.实心圆（带动画偏移）----------------
-        XUI::DrawPen penCircle;
+        Xiao2D::DrawPen penCircle;
         penCircle
             .setFillColor({0.9f,0.6f,0.1f,1})
             .setLineColor({1,1,1,1})
             .setLineWidth(4.f)
             .setCirclePrecision(60);
-        XUI::Circle cir{{350 + circleOffsetX, 380}, 75};
+        Xiao2D::Circle cir{{350 + circleOffsetX, 380}, 75};
         winGeo.draw(cir, penCircle);
 
         // ----------------4.圆环Ring ----------------
-        XUI::DrawPen penRing;
+        Xiao2D::DrawPen penRing;
         penRing
             .setFillColor({0.2f,0.8f,0.3f,0.75f})
             .setLineColor({1,1,1,1})
             .setLineWidth(2.f);
-        XUI::Ring ring;
+        Xiao2D::Ring ring;
         ring.point = {720, 400};
         ring.outerR = 90;
         ring.innerR = 55;
         winGeo.draw(ring, penRing);
 
         // ----------------5.粗线条Line（圆角线帽）----------------
-        XUI::DrawPen penLine;
+        Xiao2D::DrawPen penLine;
         penLine
             .setLineColor({0.9,0.2,0.9,1})
             .setLineWidth(12.f);
-        XUI::Point p1{60, 520};
-        XUI::Point p2{820, 520};
-        XUI::Line line{p1,p2};
+        Xiao2D::Point p1{60, 520};
+        Xiao2D::Point p2{820, 520};
+        Xiao2D::Line line{p1,p2};
         winGeo.draw(line, penLine);
 
         // ----------------6.绘制点（内部小圆）----------------
-        XUI::DrawPen penPoint;
+        Xiao2D::DrawPen penPoint;
         penPoint
             .setLineColor({1,0,0,1})
             .setLineWidth(10.f);
@@ -91,8 +91,8 @@ int main()
         if(printCounter >=30)
         {
             printCounter =0;
-            std::cout << "[GeoWin] FPS:" << XUI::App::getFPS()
-                      << "  dt=" << XUI::App::getDeltaTime() << "\n";
+            std::cout << "[GeoWin] FPS:" << Xiao2D::App::getFPS()
+                      << "  dt=" << Xiao2D::App::getDeltaTime() << "\n";
         }
     };
 
@@ -110,7 +110,7 @@ int main()
     };
 
     // ========== 窗口2：简单动画窗口（独立渲染，独立事件） ==========
-    XUI::Window winAnim("第二个测试窗口",600,450);
+    Xiao2D::Window winAnim("第二个测试窗口",600,450);
     float ballX = 300;
     float ballVx = 130.0f;
 
@@ -121,7 +121,7 @@ int main()
         {
             ballVx *= -1;
         }
-        XUI::Circle ball{{ballX,220},50};
+        Xiao2D::Circle ball{{ballX,220},50};
         winAnim.draw(ball); // 使用窗口默认drawPen
     };
 
@@ -134,15 +134,15 @@ int main()
     };
 
     // 将两个窗口交给App托管
-    XUI::App::addWindow(&winGeo);
-    XUI::App::addWindow(&winAnim);
+    Xiao2D::App::addWindow(&winGeo);
+    Xiao2D::App::addWindow(&winAnim);
 
-    std::cout << "==== XUI测试程序启动 ====\n";
+    std::cout << "==== Xiao2D测试程序启动 ====\n";
     std::cout << "功能：多窗口、圆/圆环/线条/斜矩形、动画、事件、FPS统计\n";
     std::cout << "关闭全部窗口程序退出\n";
 
     // 启动主循环（阻塞）
-    XUI::App::run();
+    Xiao2D::App::run();
 
     std::cout << "程序正常退出\n";
     return 0;
