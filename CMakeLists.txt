@@ -24,7 +24,6 @@ target_include_directories(Xiao2D
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Xiao2D内部依赖SDL3/SDL3_ttf，在这里写上PRIVATE
 target_link_libraries(Xiao2D
     PUBLIC
         SDL3::SDL3
