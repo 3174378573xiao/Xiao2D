@@ -2,6 +2,7 @@
 cmake_minimum_required(VERSION 3.16)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # ========= SDL预编译包(find_package，二进制包) =========
 set(SDL3_DIR "${CMAKE_CURRENT_SOURCE_DIR}/SDL/lib/cmake/SDL3")
