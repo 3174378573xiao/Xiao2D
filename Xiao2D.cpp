@@ -41,30 +41,117 @@ namespace Xiao2D
         return Point{y, -x};
     }
 
-    // ========= Rect两种构造实现 =========
-    Rect Rect::CreateWithTLWH(Point topLeft, float w, float h)
+    //===== 多边形三角剖分几何辅助实现 =====
+    float cross(const Point &a, const Point &b, const Point &c)
     {
-        Rect r;
-        r.v[0] = topLeft;
-        r.v[1] = Point{topLeft.x + w, topLeft.y};
-        r.v[2] = Point{topLeft.x + w, topLeft.y + h};
-        r.v[3] = Point{topLeft.x, topLeft.y + h};
-        return r;
+        return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
     }
 
-    Rect Rect::CreateFromTwoMidPoints(Point midTop, Point midBot, float width)
+    bool pointInTriangle(const Point &p, const Point &a, const Point &b, const Point &c)
     {
-        Rect rect;
+        float c1 = cross(a, b, p);
+        float c2 = cross(b, c, p);
+        float c3 = cross(c, a, p);
+        bool pos = (c1 >= -1e-6f) && (c2 >= -1e-6f) && (c3 >= -1e-6f);
+        bool neg = (c1 <= 1e-6f) && (c2 <= 1e-6f) && (c3 <= 1e-6f);
+        return pos || neg;
+    }
+
+    bool isConvex(const Point &a, const Point &b, const Point &c)
+    {
+        // 逆时针多边形，cross>0代表b是凸顶点
+        return cross(a, b, c) > 1e-6f;
+    }
+
+    bool earClipTriangulate(const Point poly[], size_t length, std::vector<size_t> &outTris)
+    {
+        outTris.clear();
+        if (length < 3)
+            return false;
+
+        // 维护剩余顶点索引列表
+        std::vector<size_t> idxList;
+        for (size_t i = 0; i < length; i++)
+            idxList.push_back(i);
+
+        size_t count = idxList.size();
+        while (count > 3)
+        {
+            bool earFound = false;
+            for (size_t i = 0; i < count; i++)
+            {
+                size_t iPrev = (i == 0) ? count - 1 : i - 1;
+                size_t iCurr = i;
+                size_t iNext = (i + 1) % count;
+
+                Point a = poly[idxList[iPrev]];
+                Point b = poly[idxList[iCurr]];
+                Point c = poly[idxList[iNext]];
+
+                // 耳朵条件1：当前顶点是凸顶点
+                if (!isConvex(a, b, c))
+                    continue;
+
+                // 耳朵条件2：三角形abc内部不包含其他任何剩余顶点
+                bool hasPointInside = false;
+                for (size_t j = 0; j < count; j++)
+                {
+                    if (j == iPrev || j == iCurr || j == iNext)
+                        continue;
+                    Point p = poly[idxList[j]];
+                    if (pointInTriangle(p, a, b, c))
+                    {
+                        hasPointInside = true;
+                        break;
+                    }
+                }
+                if (hasPointInside)
+                    continue;
+
+                // ✔ 找到耳朵，输出三角形(a,b,c)
+                outTris.push_back(idxList[iPrev]);
+                outTris.push_back(idxList[iCurr]);
+                outTris.push_back(idxList[iNext]);
+
+                // 裁剪耳朵，移除当前耳朵顶点
+                idxList.erase(idxList.begin() + i);
+                count--;
+                earFound = true;
+                break;
+            }
+            if (!earFound)
+            {
+                // 找不到耳朵：多边形自交或者退化，剖分失败
+                return false;
+            }
+        }
+        // 剩下最后3个顶点输出最后一个三角形
+        outTris.push_back(idxList[0]);
+        outTris.push_back(idxList[1]);
+        outTris.push_back(idxList[2]);
+        return true;
+    }
+
+    // ========= Rect两种构造实现 =========
+    Rect::Rect(Point topLeft, float w, float h)
+    {
+        v[0] = topLeft;
+        v[1] = Point{topLeft.x + w, topLeft.y};
+        v[2] = Point{topLeft.x + w, topLeft.y + h};
+        v[3] = Point{topLeft.x, topLeft.y + h};
+    }
+
+    Rect::Rect(Point midTop, Point midBot, float width)
+    {
         Point dirLine = midBot - midTop;
         Point perp = dirLine.perpendicularCCW().normalize();
         float halfW = width * 0.5f;
         // 上边两个角
-        rect.v[0] = midTop + perp * halfW;
-        rect.v[1] = midTop - perp * halfW;
+        v[0] = midTop + perp * halfW;
+        v[1] = midTop - perp * halfW;
         // 下边两个角
-        rect.v[2] = midBot - perp * halfW;
-        rect.v[3] = midBot + perp * halfW;
-        return rect;
+        v[2] = midBot - perp * halfW;
+        v[3] = midBot + perp * halfW;
     }
 
     //=====内部辅助：生成圆环顶点索引=====
@@ -395,7 +482,63 @@ namespace Xiao2D
     {
         draw(rect, this->drawPen);
     }
-    // 静态成员定义！非常关键，否则链接报错
+
+    void Window::draw(const Point points[], size_t length)
+    {
+        draw(points, length, this->drawPen);
+    }
+
+    void Window::draw(const Point points[], size_t length, const DrawPen &drawPen)
+    {
+        if (!_renderer)
+            return;
+        if (length < 3 || points == nullptr)
+            return;
+
+        // ---------- 填充绘制：耳切剖分 ----------
+        if (drawPen.isFilledWithBorder)
+        {
+            DrawPen tmpPen = drawPen;
+            tmpPen.isFilledWithBorder = false;
+            std::vector<size_t> triIndices;
+            bool ok = earClipTriangulate(points, length, triIndices);
+            if (ok)
+            {
+                std::vector<SDL_Vertex> verts;
+                auto addV = [&](Point pt, Color c)
+                {
+                    SDL_Vertex v{};
+                    v.position.x = pt.x;
+                    v.position.y = pt.y;
+                    v.color = c.toSDL_FColor();
+                    verts.push_back(v);
+                };
+                // triIndices每3个为一个三角形索引
+                for (size_t t = 0; t < triIndices.size(); t += 3)
+                {
+                    size_t i0 = triIndices[t];
+                    size_t i1 = triIndices[t + 1];
+                    size_t i2 = triIndices[t + 2];
+                    addV(points[i0], tmpPen.fillColor);
+                    addV(points[i1], tmpPen.fillColor);
+                    addV(points[i2], tmpPen.fillColor);
+                }
+                submitGeometry(verts);
+            }
+        }
+
+        // ---------- 描边线框绘制：闭合多边形，复用Line（自带圆角线帽） ----------
+        DrawPen borderPen = drawPen;
+        borderPen.isFilledWithBorder = false;
+        borderPen.fillColor = drawPen.lineColor;
+
+        for (size_t i = 0; i < length; i++)
+        {
+            size_t j = (i + 1) % length;
+            draw(Line{points[i], points[j]}, borderPen);
+        }
+    }
+
     std::vector<Window *> App::wins;
     Uint64 App::perfFreq = 0;
     Uint64 App::lastPerfCount = 0;
