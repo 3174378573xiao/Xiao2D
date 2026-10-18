@@ -239,14 +239,14 @@ namespace Xiao2D
             DrawPen tmp = pen;
             tmp.isFilledWithBorder = false;
             std::vector<SDL_Vertex> v(N + 1);
-            Point worldCenter = localToWorld({0,0});
+            Point worldCenter = localToWorld({0, 0});
             v[0].position.x = worldCenter.x;
             v[0].position.y = worldCenter.y;
             v[0].color = tmp.fillColor.toSDL_FColor();
             for (int i = 1; i <= N; i++)
             {
                 float a = 2.f * std::numbers::pi * i / N;
-                Point localPt{ r * std::cos(a), r * std::sin(a) };
+                Point localPt{r * std::cos(a), r * std::sin(a)};
                 Point worldPt = localToWorld(localPt);
                 v[i].position.x = worldPt.x;
                 v[i].position.y = worldPt.y;
@@ -269,11 +269,11 @@ namespace Xiao2D
 
             std::vector<SDL_Vertex> rv;
             std::vector<int> ridx;
-            for(int i=0;i<=N;i++)
+            for (int i = 0; i <= N; i++)
             {
                 float ang = 2.f * std::numbers::pi * i / N;
-                Point outLocal{r*std::cos(ang), r*std::sin(ang)};
-                Point inLocal{innerRLocal*std::cos(ang), innerRLocal*std::sin(ang)};
+                Point outLocal{r * std::cos(ang), r * std::sin(ang)};
+                Point inLocal{innerRLocal * std::cos(ang), innerRLocal * std::sin(ang)};
                 SDL_Vertex vOut{};
                 vOut.position = {localToWorld(outLocal).x, localToWorld(outLocal).y};
                 vOut.color = ringPen.fillColor.toSDL_FColor();
@@ -350,43 +350,51 @@ namespace Xiao2D
             DrawPen strokePen = pen;
             strokePen.isFilledWithBorder = false;
             strokePen.fillColor = pen.lineColor;
-            float oInLocal = std::max(0.f, outerR - pen.lineWidth/std::fabs(scale.x));
+            float oInLocal = std::max(0.f, outerR - pen.lineWidth / std::fabs(scale.x));
             std::vector<SDL_Vertex> vo;
             std::vector<int> idxo;
-            for(int i=0;i<=seg;i++)
+            for (int i = 0; i <= seg; i++)
             {
-                float ang = 2.f*std::numbers::pi*i/seg;
-                Point oL{float(outerR*cos(ang)), float(outerR*sin(ang))};
-                Point iL{float(oInLocal*cos(ang)), float(oInLocal*sin(ang))};
-                vo.push_back({{localToWorld(oL).x, localToWorld(oL).y}, strokePen.fillColor.toSDL_FColor(), {0,0}});
-                vo.push_back({{localToWorld(iL).x, localToWorld(iL).y}, strokePen.fillColor.toSDL_FColor(), {0,0}});
+                float ang = 2.f * std::numbers::pi * i / seg;
+                Point oL{float(outerR * cos(ang)), float(outerR * sin(ang))};
+                Point iL{float(oInLocal * cos(ang)), float(oInLocal * sin(ang))};
+                vo.push_back({{localToWorld(oL).x, localToWorld(oL).y}, strokePen.fillColor.toSDL_FColor(), {0, 0}});
+                vo.push_back({{localToWorld(iL).x, localToWorld(iL).y}, strokePen.fillColor.toSDL_FColor(), {0, 0}});
             }
-            for(int i=0;i<seg;i++)
+            for (int i = 0; i < seg; i++)
             {
-                int o0=i*2,i0=i*2+1,o1=(i+1)*2,i1=(i+1)*2+1;
-                idxo.push_back(o0);idxo.push_back(i0);idxo.push_back(o1);
-                idxo.push_back(o1);idxo.push_back(i0);idxo.push_back(i1);
+                int o0 = i * 2, i0 = i * 2 + 1, o1 = (i + 1) * 2, i1 = (i + 1) * 2 + 1;
+                idxo.push_back(o0);
+                idxo.push_back(i0);
+                idxo.push_back(o1);
+                idxo.push_back(o1);
+                idxo.push_back(i0);
+                idxo.push_back(i1);
             }
-            SDL_RenderGeometry(renderer,nullptr,vo.data(),(int)vo.size(),idxo.data(),(int)idxo.size());
+            SDL_RenderGeometry(renderer, nullptr, vo.data(), (int)vo.size(), idxo.data(), (int)idxo.size());
 
-            float iInLocal = std::max(0.f, innerR - pen.lineWidth/std::fabs(scale.x));
+            float iInLocal = std::max(0.f, innerR - pen.lineWidth / std::fabs(scale.x));
             std::vector<SDL_Vertex> vi;
             std::vector<int> idxi;
-            for(int i=0;i<=seg;i++)
+            for (int i = 0; i <= seg; i++)
             {
-                float ang = 2.f*std::numbers::pi*i/seg;
-                Point oL{float(innerR*cos(ang)), float(innerR*sin(ang))};
-                Point iL{float(iInLocal*cos(ang)), float(iInLocal*sin(ang))};
-                vi.push_back({{localToWorld(oL).x, localToWorld(oL).y}, strokePen.fillColor.toSDL_FColor(), {0,0}});
-                vi.push_back({{localToWorld(iL).x, localToWorld(iL).y}, strokePen.fillColor.toSDL_FColor(), {0,0}});
+                float ang = 2.f * std::numbers::pi * i / seg;
+                Point oL{float(innerR * cos(ang)), float(innerR * sin(ang))};
+                Point iL{float(iInLocal * cos(ang)), float(iInLocal * sin(ang))};
+                vi.push_back({{localToWorld(oL).x, localToWorld(oL).y}, strokePen.fillColor.toSDL_FColor(), {0, 0}});
+                vi.push_back({{localToWorld(iL).x, localToWorld(iL).y}, strokePen.fillColor.toSDL_FColor(), {0, 0}});
             }
-            for(int i=0;i<seg;i++)
+            for (int i = 0; i < seg; i++)
             {
-                int o0=i*2,i0=i*2+1,o1=(i+1)*2,i1=(i+1)*2+1;
-                idxi.push_back(o0);idxi.push_back(i0);idxi.push_back(o1);
-                idxi.push_back(o1);idxi.push_back(i0);idxi.push_back(i1);
+                int o0 = i * 2, i0 = i * 2 + 1, o1 = (i + 1) * 2, i1 = (i + 1) * 2 + 1;
+                idxi.push_back(o0);
+                idxi.push_back(i0);
+                idxi.push_back(o1);
+                idxi.push_back(o1);
+                idxi.push_back(i0);
+                idxi.push_back(i1);
             }
-            SDL_RenderGeometry(renderer,nullptr,vi.data(),(int)vi.size(),idxi.data(),(int)idxi.size());
+            SDL_RenderGeometry(renderer, nullptr, vi.data(), (int)vi.size(), idxi.data(), (int)idxi.size());
         }
     }
 
@@ -403,7 +411,7 @@ namespace Xiao2D
             DrawPen tmp = pen;
             tmp.isFilledWithBorder = false;
             std::vector<SDL_Vertex> v(N + 1);
-            Point worldCenter = localToWorld({0,0});
+            Point worldCenter = localToWorld({0, 0});
             v[0].position = {worldCenter.x, worldCenter.y};
             v[0].color = tmp.fillColor.toSDL_FColor();
             for (int i = 1; i <= N; i++)
@@ -440,8 +448,8 @@ namespace Xiao2D
                 float c = std::cos(ang), s = std::sin(ang);
                 Point voLocal{rx * c, ry * s};
                 Point viLocal{rxInLocal * c, ryInLocal * s};
-                verts.push_back({{localToWorld(voLocal).x, localToWorld(voLocal).y}, ringPen.fillColor.toSDL_FColor(), {0,0}});
-                verts.push_back({{localToWorld(viLocal).x, localToWorld(viLocal).y}, ringPen.fillColor.toSDL_FColor(), {0,0}});
+                verts.push_back({{localToWorld(voLocal).x, localToWorld(voLocal).y}, ringPen.fillColor.toSDL_FColor(), {0, 0}});
+                verts.push_back({{localToWorld(viLocal).x, localToWorld(viLocal).y}, ringPen.fillColor.toSDL_FColor(), {0, 0}});
             }
             for (int i = 0; i < N; i++)
             {
@@ -473,13 +481,13 @@ namespace Xiao2D
             DrawPen tmp = pen;
             tmp.isFilledWithBorder = false;
             std::vector<SDL_Vertex> verts;
-            Point worldCenter = localToWorld({0,0});
+            Point worldCenter = localToWorld({0, 0});
             verts.push_back({{worldCenter.x, worldCenter.y}, tmp.fillColor.toSDL_FColor(), {0, 0}});
             int steps = std::max(3, (int)(std::fabs(span) / (2.f * std::numbers::pi) * N));
             for (int i = 0; i <= steps; i++)
             {
                 float a = startAng + span * (float)i / steps;
-                Point localPt{ radius * std::cos(a), radius * std::sin(a) };
+                Point localPt{radius * std::cos(a), radius * std::sin(a)};
                 Point worldPt = localToWorld(localPt);
                 SDL_Vertex v{};
                 v.position.x = worldPt.x;
@@ -682,7 +690,7 @@ namespace Xiao2D
         TTF_SetTextColorFloat(textObj, pen.lineColor.r, pen.lineColor.g, pen.lineColor.b, pen.lineColor.a);
         TTF_UpdateText(textObj);
         bool drawOk = TTF_DrawRendererText(textObj, this->pos.x, this->pos.y);
-        if(!drawOk)
+        if (!drawOk)
         {
             std::cerr << "[Xiao2D::Text::drawOnWindow]TTF_DrawRendererText失败！err=" << SDL_GetError() << std::endl;
         }
@@ -751,14 +759,6 @@ namespace Xiao2D
         {
             SDL_DestroyWindow(_window);
             _window = nullptr;
-        }
-        for (auto &pair : drawPen.fontsLoadList)
-        {
-            if (pair.second)
-            {
-                TTF_CloseFont(pair.second);
-                pair.second = nullptr;
-            }
         }
     }
     void Window::submitGeometry(const std::vector<SDL_Vertex> &verts) const
@@ -850,11 +850,16 @@ namespace Xiao2D
             if (w)
                 w->destroy();
         wins.clear();
+        DrawPen::freeAllFonts();
         TTF_Quit();
         SDL_Quit();
     }
+    
+    Point App::MouseState::pos = {0, 0};
+
     float App::getDeltaTime() { return deltaTime; }
     float App::getFPS() { return fps; }
+
     void App::run()
     {
         bool running = true;
@@ -865,6 +870,7 @@ namespace Xiao2D
         const float maxDeltaTime = 0.1f;
         while (running)
         {
+            //======== 计算deltaTime和FPS ========
             Uint64 now = SDL_GetPerformanceCounter();
             deltaTime = (float)(now - lastPerfCount) / (float)perfFreq;
             lastPerfCount = now;
@@ -872,6 +878,10 @@ namespace Xiao2D
                 deltaTime = maxDeltaTime;
             if (deltaTime > 1e-6f)
                 fps = 1.f / deltaTime;
+
+            //
+            App::MouseState::updatePos();
+            //======= 处理事件 ========
             while (SDL_PollEvent(&event))
             {
                 if (event.type == SDL_EVENT_QUIT)

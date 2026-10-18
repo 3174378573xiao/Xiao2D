@@ -83,12 +83,23 @@ namespace Xiao2D
         int pointPrecision;      ///< 点(小圆)分段数量
         int circlePrecision;     ///< 圆、椭圆、扇形、圆环的多边形逼近分段数
 
-        std::string fontPath;
-        int fontSize;
+        std::string fontPath; ///< 字体文件路径
+        int fontSize;         ///< 字体大小
 
         static std::vector<std::pair<std::string, TTF_Font *>> fontsLoadList;
         static bool loadFont(const std::string &fontPath, int fontSize);
         static TTF_Font *getFont(const std::string &fontPath);
+        static void freeAllFonts()
+        {
+            for (auto &pair : fontsLoadList)
+            {
+                if (pair.second)
+                {
+                    TTF_CloseFont(pair.second);
+                    pair.second = nullptr;
+                }
+            }
+        }
 
         DrawPen()
             : lineColor{1, 1, 1, 1},
@@ -136,6 +147,18 @@ namespace Xiao2D
         DrawPen &setCirclePrecision(int prec)
         {
             circlePrecision = prec;
+            return *this;
+        }
+
+        DrawPen &setFontPath(const std::string &path)
+        {
+            fontPath = path;
+            return *this;
+        }
+
+        DrawPen &setFontSize(int size)
+        {
+            fontSize = size;
             return *this;
         }
     };
@@ -347,7 +370,45 @@ namespace Xiao2D
 
     class App
     {
+
     public:
+        class MouseState
+        {
+        public:
+            enum class MouseKey
+            {
+                Left,
+                Right,
+                Mid,
+                Side1,
+                Side2
+            };
+            static Point pos;
+            static void updatePos()
+            {
+                SDL_GetMouseState(&pos.x, &pos.y);
+            }
+            static bool isKeyPressed(MouseKey key)
+            {
+                Uint32 state = SDL_GetMouseState(nullptr, nullptr);
+                switch (key)
+                {
+                case MouseKey::Left:
+                    return (state & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) != 0;
+                case MouseKey::Right:
+                    return (state & SDL_BUTTON_MASK(SDL_BUTTON_RIGHT)) != 0;
+                case MouseKey::Mid:
+                    return (state & SDL_BUTTON_MASK(SDL_BUTTON_MIDDLE)) != 0;
+                case MouseKey::Side1:
+                    return (state & SDL_BUTTON_MASK(SDL_BUTTON_X1)) != 0;
+                case MouseKey::Side2:
+                    return (state & SDL_BUTTON_MASK(SDL_BUTTON_X2)) != 0;
+                default:
+                    return false;
+                }
+            }
+        };
+
         static int init();
         static void addWindow(Window *win);
         static void addWindow(Window *wins[], int winNum);
@@ -357,6 +418,8 @@ namespace Xiao2D
         static float getFPS();
 
     private:
+        static void updateMouseState();
+        static std::vector<int> pressedKeys;
         static std::vector<Window *> wins;
         static Uint64 perfFreq;
         static Uint64 lastPerfCount;
