@@ -804,6 +804,27 @@ namespace Xiao2D
     Uint64 App::lastPerfCount = 0;
     float App::deltaTime = 0.0f;
     float App::fps = 0.0f;
+
+    Point App::getMouseGlobalPos()
+    {
+        Point p;
+        SDL_GetGlobalMouseState(&p.x, &p.y);
+        return p;
+    }
+
+    Point App::getMouseWindowPos(const Window *win)
+    {
+        if(!win){
+            std::cerr<<"[Xiao2D::App::getMouseWindowPos]传入参数 Xiao2D::Window *win 为空"<<std::endl;
+            return Point{0,0};
+        }
+        Point pg = getMouseGlobalPos();
+        int x, y;
+        SDL_GetWindowPosition(win->_window, &x, &y);
+        Point pw{float(x), float(y)};
+        return pg - pw;
+    }
+
     int App::init()
     {
         if (!SDL_Init(SDL_INIT_VIDEO))
@@ -854,15 +875,14 @@ namespace Xiao2D
         TTF_Quit();
         SDL_Quit();
     }
-    
-    Point App::MouseState::pos = {0, 0};
 
     float App::getDeltaTime() { return deltaTime; }
     float App::getFPS() { return fps; }
 
+    bool App::running = false;
     void App::run()
     {
-        bool running = true;
+        running = true;
         SDL_Event event{};
         perfFreq = SDL_GetPerformanceFrequency();
         lastPerfCount = SDL_GetPerformanceCounter();
@@ -879,8 +899,6 @@ namespace Xiao2D
             if (deltaTime > 1e-6f)
                 fps = 1.f / deltaTime;
 
-            //
-            App::MouseState::updatePos();
             //======= 处理事件 ========
             while (SDL_PollEvent(&event))
             {
@@ -936,5 +954,9 @@ namespace Xiao2D
             }
         }
         quit();
+    }
+    void App::stopRun()
+    {
+        running = false;
     }
 }

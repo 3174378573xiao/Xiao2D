@@ -367,59 +367,74 @@ namespace Xiao2D
         void create();
         void destroy();
     };
+    enum class Key : int
+    {
+        A = SDL_SCANCODE_A,
+        B = SDL_SCANCODE_B,
+        C = SDL_SCANCODE_C,
+        D = SDL_SCANCODE_D,
+        E = SDL_SCANCODE_E,
+        F = SDL_SCANCODE_F,
+        G = SDL_SCANCODE_G,
+        H = SDL_SCANCODE_H,
+        I = SDL_SCANCODE_I,
+        J = SDL_SCANCODE_J,
+        K = SDL_SCANCODE_K,
+        L = SDL_SCANCODE_L,
+        M = SDL_SCANCODE_M,
+        N = SDL_SCANCODE_N,
+        O = SDL_SCANCODE_O,
+        P = SDL_SCANCODE_P,
+        Q = SDL_SCANCODE_Q,
+        R = SDL_SCANCODE_R,
+        S = SDL_SCANCODE_S,
+        T = SDL_SCANCODE_T,
+        U = SDL_SCANCODE_U,
+        V = SDL_SCANCODE_V,
+        W = SDL_SCANCODE_W,
+        X = SDL_SCANCODE_X,
+        Y = SDL_SCANCODE_Y,
+        Z = SDL_SCANCODE_Z,
+        Space = SDL_SCANCODE_SPACE,
+        Enter = SDL_SCANCODE_RETURN,
+        Escape = SDL_SCANCODE_ESCAPE,
+        ShiftLeft = SDL_SCANCODE_LSHIFT,
+        ShiftRight = SDL_SCANCODE_RSHIFT,
+        CtrlLeft = SDL_SCANCODE_LCTRL,
+        CtrlRight = SDL_SCANCODE_RCTRL,
+        MouseLeft,
+        MouseRight,
+        MouseMiddle,
+    };
 
     class App
     {
 
     public:
-        class MouseState
-        {
-        public:
-            enum class MouseKey
-            {
-                Left,
-                Right,
-                Mid,
-                Side1,
-                Side2
-            };
-            static Point pos;
-            static void updatePos()
-            {
-                SDL_GetMouseState(&pos.x, &pos.y);
-            }
-            static bool isKeyPressed(MouseKey key)
-            {
-                Uint32 state = SDL_GetMouseState(nullptr, nullptr);
-                switch (key)
-                {
-                case MouseKey::Left:
-                    return (state & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) != 0;
-                case MouseKey::Right:
-                    return (state & SDL_BUTTON_MASK(SDL_BUTTON_RIGHT)) != 0;
-                case MouseKey::Mid:
-                    return (state & SDL_BUTTON_MASK(SDL_BUTTON_MIDDLE)) != 0;
-                case MouseKey::Side1:
-                    return (state & SDL_BUTTON_MASK(SDL_BUTTON_X1)) != 0;
-                case MouseKey::Side2:
-                    return (state & SDL_BUTTON_MASK(SDL_BUTTON_X2)) != 0;
-                default:
-                    return false;
-                }
-            }
-        };
+    
+        static bool running;
+        static Point getMouseGlobalPos();
+        static Point getMouseWindowPos(const Window *win);
+
+        template <typename... Rest>
+        static bool isAnyKeyPressed(Key key, Rest... rest);
+        inline static bool isAnyKeyPressed() { return false; }
+
+        template <typename... Rest>
+        static bool isAllKeyPressed(Key key, Rest... rest);
+        inline static bool isAllKeyPressed() { return true; }
 
         static int init();
         static void addWindow(Window *win);
         static void addWindow(Window *wins[], int winNum);
         static void run();
+        static void stopRun();
         static void quit();
         static float getDeltaTime();
         static float getFPS();
 
     private:
         static void updateMouseState();
-        static std::vector<int> pressedKeys;
         static std::vector<Window *> wins;
         static Uint64 perfFreq;
         static Uint64 lastPerfCount;
@@ -427,4 +442,84 @@ namespace Xiao2D
         static float fps;
         static Window *findWindowByID(Uint32 windowId);
     };
+
+    //inline定义
+    template <typename... Rest>
+    inline bool App::isAnyKeyPressed(Key key, Rest... rest)
+    {
+        // C++11静态断言，强制所有参数是Key
+        static_assert(std::is_same<Key, typename std::decay<decltype(key)>::type>::value, "参数必须为Key");
+        if ((key == Key::MouseLeft || key == Key::MouseRight || key == Key::MouseMiddle))
+        {
+            SDL_MouseButtonFlags nowState = SDL_GetMouseState(nullptr, nullptr);
+            SDL_MouseButtonFlags wantKey;
+            switch (key)
+            {
+            case Key::MouseLeft:
+                wantKey = SDL_BUTTON_LEFT;
+                break;
+            case Key::MouseRight:
+                wantKey = SDL_BUTTON_RIGHT;
+                break;
+            case Key::MouseMiddle:
+                wantKey = SDL_BUTTON_MIDDLE;
+                break;
+            default:
+                wantKey = 0;
+                break;
+            }
+            if ((nowState & SDL_BUTTON_MASK(wantKey)) != 0)
+                return true;
+            else
+                return isAnyKeyPressed(rest...);
+        }
+        else
+        {
+            const bool *keystate = SDL_GetKeyboardState(nullptr);
+            if (keystate[static_cast<int>(key)])
+                return true;
+            else
+                return isAnyKeyPressed(rest...);
+        }
+    }
+
+
+    template <typename... Rest>
+    inline bool App::isAllKeyPressed(Key key, Rest... rest)
+    {
+        // C++11静态断言，强制所有参数是Key
+        static_assert(std::is_same<Key, typename std::decay<decltype(key)>::type>::value, "参数必须为Key");
+        if ((key == Key::MouseLeft || key == Key::MouseRight || key == Key::MouseMiddle))
+        {
+            SDL_MouseButtonFlags nowState = SDL_GetMouseState(nullptr, nullptr);
+            SDL_MouseButtonFlags wantKey;
+            switch (key)
+            {
+            case Key::MouseLeft:
+                wantKey = SDL_BUTTON_LEFT;
+                break;
+            case Key::MouseRight:
+                wantKey = SDL_BUTTON_RIGHT;
+                break;
+            case Key::MouseMiddle:
+                wantKey = SDL_BUTTON_MIDDLE;
+                break;
+            default:
+                wantKey = 0;
+                break;
+            }
+            if ((nowState & SDL_BUTTON_MASK(wantKey)) != SDL_BUTTON_MASK(wantKey))
+                return false;
+            else
+                return isAllKeyPressed(rest...);
+        }
+        else
+        {
+            const bool *keystate = SDL_GetKeyboardState(nullptr);
+            if (!keystate[static_cast<int>(key)])
+                return false;
+            else
+                return isAllKeyPressed(rest...);
+        }
+    }
 }
