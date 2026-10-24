@@ -3,15 +3,16 @@
  * @file Xiao2D.h
  * @brief 基于SDL3的简易2D绘图库，重构版：统一Area图形基类，支持变换、点碰撞检测，圆/椭圆/圆环/矩形/扇形/多边形
  * @author Xiao2D
- * @version 0.3
+ * @version 0.4 fixed
  * @details
  * 底层依赖 SDL3 RenderGeometry 硬件三角形渲染；
  * 全部图形继承Area基类，内置位置、旋转、缩放变换；支持虚函数contains()点碰撞检测；
  * 绘图逻辑全部下沉到各个Area子类drawOnWindow，Window仅负责底层渲染提交与事件循环。
  * 所有坐标窗口像素浮点数，Y轴向下；rotation单位为弧度，正值顺时针旋转。
  * DrawPen支持链式调用设置属性。
- * @note 需要C++20标准，依赖SDL3
+ * @note C++17兼容，依赖SDL3、SDL3_ttf
  */
+#define _USE_MATH_DEFINES
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <iostream>
@@ -19,7 +20,11 @@
 #include <vector>
 #include <functional>
 #include <cmath>
-#include <numbers>
+#include <utility>
+
+#ifndef MATH_PI
+#define MATH_PI 3.14159265358979323846f
+#endif
 
 namespace Xiao2D
 {
@@ -34,30 +39,23 @@ namespace Xiao2D
         float g; ///< 绿色通道 [0.0,1.0]
         float b; ///< 蓝色通道 [0.0,1.0]
         float a; ///< Alpha透明度 [0.0完全透明，1.0不透明]
-
         SDL_FColor toSDL_FColor() const { return {r, g, b, a}; }
-
         // ========== 常用预定义颜色【static const 常量】 头文件声明 ==========
         static const Color Black;
         static const Color White;
         static const Color MidGray;
         static const Color DarkGray;
         static const Color LiteGray;
-
         static const Color Red;
         static const Color Green;
         static const Color Blue;
-
         static const Color Yellow;
         static const Color PinkRed;
         static const Color SeaBlue;
-
         static const Color Orange;
         static const Color LiteRed;
         static const Color Vio;
-
         static const Color Clear;
-
         /// 辅助工具：从0‑255整数RGBA构造颜色
         static constexpr Color fromRGBA(uint8_t r_, uint8_t g_, uint8_t b_, uint8_t a_ = 255)
         {
@@ -66,6 +64,16 @@ namespace Xiao2D
                 static_cast<float>(g_) / 255.0f,
                 static_cast<float>(b_) / 255.0f,
                 static_cast<float>(a_) / 255.0f};
+        }
+    };
+
+    struct FontKey
+    {
+        std::string path;
+        int size;
+        bool operator==(const FontKey& other) const
+        {
+            return path == other.path && size == other.size;
         }
     };
 
@@ -82,13 +90,12 @@ namespace Xiao2D
         Color eraseColor;        ///< 画布擦除背景颜色
         int pointPrecision;      ///< 点(小圆)分段数量
         int circlePrecision;     ///< 圆、椭圆、扇形、圆环的多边形逼近分段数
-
         std::string fontPath; ///< 字体文件路径
         int fontSize;         ///< 字体大小
 
-        static std::vector<std::pair<std::string, TTF_Font *>> fontsLoadList;
+        static std::vector<std::pair<FontKey, TTF_Font *>> fontsLoadList;
         static bool loadFont(const std::string &fontPath, int fontSize);
-        static TTF_Font *getFont(const std::string &fontPath);
+        static TTF_Font *getFont(const std::string &fontPath, int fontSize);
         static void freeAllFonts()
         {
             for (auto &pair : fontsLoadList)
@@ -99,6 +106,7 @@ namespace Xiao2D
                     pair.second = nullptr;
                 }
             }
+            fontsLoadList.clear();
         }
 
         DrawPen()
@@ -109,11 +117,10 @@ namespace Xiao2D
               eraseColor{0.05f, 0.05f, 0.08f, 1.0f},
               pointPrecision(16),
               circlePrecision(40),
-              fontPath("c:\\WINDOWS\\Fonts\\CONSOLA.TTF"),
+              fontPath(""),
               fontSize(40)
         {
         }
-
         DrawPen &setLineColor(Color c)
         {
             lineColor = c;
@@ -149,13 +156,11 @@ namespace Xiao2D
             circlePrecision = prec;
             return *this;
         }
-
         DrawPen &setFontPath(const std::string &path)
         {
             fontPath = path;
             return *this;
         }
-
         DrawPen &setFontSize(int size)
         {
             fontSize = size;
@@ -173,17 +178,14 @@ namespace Xiao2D
         float y; ///< Y向下增大
         Point() : x(0), y(0) {}
         Point(float x_, float y_) : x(x_), y(y_) {}
-
         Point operator+(const Point &other) const;
         Point operator-(const Point &other) const;
         Point operator*(float s) const;
         Point operator/(float s) const;
-
         float length() const;
         Point normalize() const;
         Point perpendicularCCW() const;
         Point perpendicularCW() const;
-
         /**
          * @brief 绕原点旋转当前点（窗口Y向下，angle>0顺时针）
          * @param angle 旋转弧度
@@ -211,24 +213,20 @@ namespace Xiao2D
     class Area
     {
     public:
-        Point pos;      ///< 图形基准位置（世界坐标）
+        Point pos;      ///< 图形基准位置（世界坐标，全部图形统一为几何中心）
         float rotation; ///< 旋转角度，**弧度**，窗口Y向下，正值顺时针旋转
         Point scale;    ///< X/Y缩放，{1,1}原始大小
-
         Area() : pos{0, 0}, rotation(0.f), scale{1.f, 1.f} {}
         Area(Point p) : pos(p), rotation(0.f), scale{1.f, 1.f} {}
         virtual ~Area() = default;
-
         /**
          * @brief 判断【世界窗口坐标点p】是否落在图形内部
          * @param p 世界窗口像素坐标
          * @return true点在内部；false外部
          */
         virtual bool contains(const Point &p) const = 0;
-
         Point localToWorld(const Point &local) const;
         Point worldToLocal(const Point &world) const;
-
         /**
          * @brief 多态绘制接口，子类实现，完成自身全部绘制逻辑
          * @param win 目标窗口
@@ -287,14 +285,14 @@ namespace Xiao2D
         float radius;   ///< 局部半径
         float startAng; ///< 起始弧度（局部坐标系）
         float endAng;   ///< 结束弧度（局部坐标系）
-        Sector() : Area(), radius(30.f), startAng(0), endAng(std::numbers::pi / 2.f) {}
+        Sector() : Area(), radius(30.f), startAng(0), endAng(MATH_PI / 2.f) {}
         Sector(Point c, float r, float s, float e) : Area(c), radius(r), startAng(s), endAng(e) {}
         bool contains(const Point &p) const override;
         void drawOnWindow(const Window *win, const DrawPen &pen) const override;
     };
 
     /**
-     * @brief 轴对齐矩形Rect，继承Area；pos=左上角局部原点
+     * @brief 矩形Rect，继承Area；pos=几何中心（已统一）
      */
     class Rect : public Area
     {
@@ -302,7 +300,8 @@ namespace Xiao2D
         float width;
         float height;
         Rect() : Area(), width(80.f), height(60.f) {}
-        Rect(Point topLeft, float w, float h) : Area(topLeft), width(w), height(h) {}
+        /// @param center 矩形中心点
+        Rect(Point center, float w, float h) : Area(center), width(w), height(h) {}
         bool contains(const Point &p) const override;
         void getLocalVertices(Point out[4]) const;
         void drawOnWindow(const Window *win, const DrawPen &pen) const override;
@@ -343,11 +342,9 @@ namespace Xiao2D
         Window();
         Window(const std::string title, int width, int height);
         void eraseAll(const DrawPen &drawPen);
-
         //===== 多态绘制Area派生对象 =====
         void draw(const Area &area, const DrawPen &drawPen);
         void draw(const Area &area);
-
         //===== 简单点绘制（不属于Area体系） =====
         void draw(Point point, const DrawPen &drawPen);
         void draw(Point point);
@@ -359,14 +356,15 @@ namespace Xiao2D
         std::function<void(float deltaTime)> updateCallback;
         std::function<void(SDL_Event *event)> eventCallback;
         void submitGeometry(const std::vector<SDL_Vertex> &verts) const;
-
     private:
-        TTF_TextEngine *_textEngine;
+        TTF_TextEngine *_textEngine{nullptr};
+        bool _textEngineValid{false};
         std::string title;
         int width{800}, height{600};
         void create();
         void destroy();
     };
+
     enum class Key : int
     {
         A = SDL_SCANCODE_A,
@@ -409,9 +407,7 @@ namespace Xiao2D
 
     class App
     {
-
     public:
-    
         static bool running;
         static Point getMouseGlobalPos();
         static Point getMouseWindowPos(const Window *win);
@@ -434,7 +430,6 @@ namespace Xiao2D
         static float getFPS();
 
     private:
-        static void updateMouseState();
         static std::vector<Window *> wins;
         static Uint64 perfFreq;
         static Uint64 lastPerfCount;
@@ -447,7 +442,6 @@ namespace Xiao2D
     template <typename... Rest>
     inline bool App::isAnyKeyPressed(Key key, Rest... rest)
     {
-        // C++11静态断言，强制所有参数是Key
         static_assert(std::is_same<Key, typename std::decay<decltype(key)>::type>::value, "参数必须为Key");
         if ((key == Key::MouseLeft || key == Key::MouseRight || key == Key::MouseMiddle))
         {
@@ -455,18 +449,10 @@ namespace Xiao2D
             SDL_MouseButtonFlags wantKey;
             switch (key)
             {
-            case Key::MouseLeft:
-                wantKey = SDL_BUTTON_LEFT;
-                break;
-            case Key::MouseRight:
-                wantKey = SDL_BUTTON_RIGHT;
-                break;
-            case Key::MouseMiddle:
-                wantKey = SDL_BUTTON_MIDDLE;
-                break;
-            default:
-                wantKey = 0;
-                break;
+            case Key::MouseLeft: wantKey = SDL_BUTTON_LEFT; break;
+            case Key::MouseRight: wantKey = SDL_BUTTON_RIGHT; break;
+            case Key::MouseMiddle: wantKey = SDL_BUTTON_MIDDLE; break;
+            default: wantKey = 0; break;
             }
             if ((nowState & SDL_BUTTON_MASK(wantKey)) != 0)
                 return true;
@@ -483,11 +469,9 @@ namespace Xiao2D
         }
     }
 
-
     template <typename... Rest>
     inline bool App::isAllKeyPressed(Key key, Rest... rest)
     {
-        // C++11静态断言，强制所有参数是Key
         static_assert(std::is_same<Key, typename std::decay<decltype(key)>::type>::value, "参数必须为Key");
         if ((key == Key::MouseLeft || key == Key::MouseRight || key == Key::MouseMiddle))
         {
@@ -495,18 +479,10 @@ namespace Xiao2D
             SDL_MouseButtonFlags wantKey;
             switch (key)
             {
-            case Key::MouseLeft:
-                wantKey = SDL_BUTTON_LEFT;
-                break;
-            case Key::MouseRight:
-                wantKey = SDL_BUTTON_RIGHT;
-                break;
-            case Key::MouseMiddle:
-                wantKey = SDL_BUTTON_MIDDLE;
-                break;
-            default:
-                wantKey = 0;
-                break;
+            case Key::MouseLeft: wantKey = SDL_BUTTON_LEFT; break;
+            case Key::MouseRight: wantKey = SDL_BUTTON_RIGHT; break;
+            case Key::MouseMiddle: wantKey = SDL_BUTTON_MIDDLE; break;
+            default: wantKey = 0; break;
             }
             if ((nowState & SDL_BUTTON_MASK(wantKey)) != SDL_BUTTON_MASK(wantKey))
                 return false;
@@ -522,4 +498,8 @@ namespace Xiao2D
                 return isAllKeyPressed(rest...);
         }
     }
+
+    // 生成带Miter斜接的线段带（修复拐角缺口）
+    void buildSimpleLineStrip(const Point& p1, const Point& p2, const Point& nextDir,
+        float lineWidth, float scaleAbsX, float scaleAbsY, std::vector<SDL_Vertex>& outVerts, Color strokeColor);
 }

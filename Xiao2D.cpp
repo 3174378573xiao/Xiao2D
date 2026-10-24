@@ -17,6 +17,42 @@ namespace Xiao2D
     const Color Color::LiteRed = {1.0f, 0.412f, 0.706f, 1.0f};
     const Color Color::Vio = {0.5f, 0.0f, 0.5f, 1.0f};
     const Color Color::Clear = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    std::vector<std::pair<FontKey, TTF_Font *>> DrawPen::fontsLoadList;
+
+    bool DrawPen::loadFont(const std::string &fontPath, int fontSize)
+    {
+        FontKey key{fontPath, fontSize};
+        for (auto &p : fontsLoadList)
+        {
+            if (p.first == key)
+            {
+                return true;
+            }
+        }
+        TTF_Font *font = TTF_OpenFont(fontPath.c_str(), fontSize);
+        if (!font)
+        {
+            std::cerr << "无法加载字体: " << fontPath << " size=" << fontSize << "，错误: " << SDL_GetError() << std::endl;
+            return false;
+        }
+        fontsLoadList.emplace_back(key, font);
+        return true;
+    }
+
+    TTF_Font *DrawPen::getFont(const std::string &fontPath, int fontSize)
+    {
+        FontKey key{fontPath, fontSize};
+        for (const auto &pair : fontsLoadList)
+        {
+            if (pair.first == key)
+            {
+                return pair.second;
+            }
+        }
+        return nullptr;
+    }
+
     //======== Point实现 ========
     Point Point::operator+(const Point &other) const
     {
@@ -64,11 +100,13 @@ namespace Xiao2D
     {
         return (*this - pivot).rotate(angle) + pivot;
     }
+
     //==== 几何工具函数 ====
     float cross(const Point &a, const Point &b, const Point &c)
     {
         return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
     }
+
     bool pointInTriangle(const Point &p, const Point &a, const Point &b, const Point &c)
     {
         float c1 = cross(a, b, p);
@@ -78,18 +116,64 @@ namespace Xiao2D
         bool neg = (c1 <= 1e-6f) && (c2 <= 1e-6f) && (c3 <= 1e-6f);
         return pos || neg;
     }
+
     bool isConvex(const Point &a, const Point &b, const Point &c)
     {
         return cross(a, b, c) > 1e-6f;
     }
+
+    // 计算多边形环绕方向，>0 CCW，<0 CW
+    static float polygonWinding(const Point poly[], size_t len)
+    {
+        float sum = 0;
+        for (size_t i = 0; i < len; i++)
+        {
+            size_t j = (i + 1) % len;
+            sum += (poly[j].x - poly[i].x) * (poly[j].y + poly[i].y);
+        }
+        return sum;
+    }
+
     bool earClipTriangulate(const Point poly[], size_t length, std::vector<size_t> &outTris)
     {
         outTris.clear();
         if (length < 3)
             return false;
+
+        // 计算环绕方向
+        auto polygonWinding = [](const Point p[], size_t len) -> float
+        {
+            float sum = 0;
+            for (size_t i = 0; i < len; i++)
+            {
+                size_t j = (i + 1) % len;
+                sum += (p[j].x - p[i].x) * (p[j].y + p[i].y);
+            }
+            return sum;
+        };
+
+        float wind = polygonWinding(poly, length);
+        bool needReverse = (wind < -1e-6f);
+
+        // idxList保存原始下标；如果是顺时针，建立反向映射
         std::vector<size_t> idxList;
-        for (size_t i = 0; i < length; i++)
-            idxList.push_back(i);
+        if (!needReverse)
+        {
+            for (size_t i = 0; i < length; i++)
+                idxList.push_back(i);
+        }
+        else
+        {
+            // 顺时针：把原始下标逆序放入idxList，剖分使用逆序，但输出依然原始索引
+            for (size_t i = length; i > 0; --i)
+                idxList.push_back(i - 1);
+        }
+
+        auto getPt = [&](size_t idx) -> const Point &
+        {
+            return poly[idx];
+        };
+
         size_t count = idxList.size();
         while (count > 3)
         {
@@ -99,17 +183,20 @@ namespace Xiao2D
                 size_t iPrev = (i == 0) ? count - 1 : i - 1;
                 size_t iCurr = i;
                 size_t iNext = (i + 1) % count;
-                Point a = poly[idxList[iPrev]];
-                Point b = poly[idxList[iCurr]];
-                Point c = poly[idxList[iNext]];
+
+                Point a = getPt(idxList[iPrev]);
+                Point b = getPt(idxList[iCurr]);
+                Point c = getPt(idxList[iNext]);
+
                 if (!isConvex(a, b, c))
                     continue;
+
                 bool hasPointInside = false;
                 for (size_t j = 0; j < count; j++)
                 {
                     if (j == iPrev || j == iCurr || j == iNext)
                         continue;
-                    Point p = poly[idxList[j]];
+                    Point p = getPt(idxList[j]);
                     if (pointInTriangle(p, a, b, c))
                     {
                         hasPointInside = true;
@@ -118,9 +205,11 @@ namespace Xiao2D
                 }
                 if (hasPointInside)
                     continue;
+
                 outTris.push_back(idxList[iPrev]);
                 outTris.push_back(idxList[iCurr]);
                 outTris.push_back(idxList[iNext]);
+
                 idxList.erase(idxList.begin() + i);
                 count--;
                 earFound = true;
@@ -134,6 +223,7 @@ namespace Xiao2D
         outTris.push_back(idxList[2]);
         return true;
     }
+
     //======== Area基类变换 ========
     Point Area::localToWorld(const Point &local) const
     {
@@ -150,6 +240,7 @@ namespace Xiao2D
         p.y /= scale.y;
         return p;
     }
+
     //======== 派生类 contains 实现 ========
     bool Circle::contains(const Point &p) const
     {
@@ -179,9 +270,9 @@ namespace Xiao2D
         auto wrap = [](float a) -> float
         {
             while (a < 0)
-                a += 2.f * std::numbers::pi;
-            while (a >= 2.f * std::numbers::pi)
-                a -= 2.f * std::numbers::pi;
+                a += 2.f * MATH_PI;
+            while (a >= 2.f * MATH_PI)
+                a -= 2.f * MATH_PI;
             return a;
         };
         float a0 = wrap(startAng);
@@ -192,18 +283,26 @@ namespace Xiao2D
         else
             return ap >= a0 - 1e-6f || ap <= a1 + 1e-6f;
     }
+
     bool Rect::contains(const Point &p) const
     {
         Point l = worldToLocal(p);
-        return l.x >= -1e-6f && l.x <= width + 1e-6f && l.y >= -1e-6f && l.y <= height + 1e-6f;
+        // Rect局部原点现在是中心：范围 [-w/2, w/2], [-h/2, h/2]
+        float halfW = width * 0.5f;
+        float halfH = height * 0.5f;
+        return l.x >= -halfW - 1e-6f && l.x <= halfW + 1e-6f && l.y >= -halfH - 1e-6f && l.y <= halfH + 1e-6f;
     }
+
     void Rect::getLocalVertices(Point out[4]) const
     {
-        out[0] = {0, 0};
-        out[1] = {width, 0};
-        out[2] = {width, height};
-        out[3] = {0, height};
+        float hw = width * 0.5f;
+        float hh = height * 0.5f;
+        out[0] = {-hw, -hh};
+        out[1] = {hw, -hh};
+        out[2] = {hw, hh};
+        out[3] = {-hw, hh};
     }
+
     bool Polygon::contains(const Point &p) const
     {
         if (localPoints.size() < 3)
@@ -223,6 +322,45 @@ namespace Xiao2D
             }
         }
         return inside;
+    }
+
+    bool Text::contains(const Point & /*p*/) const
+    {
+        // TODO:需要TTF获取文字包围盒，这里保留返回false
+        return false;
+    }
+
+    // 生成Miter斜接描边
+    void buildSimpleLineStrip(const Point &p1, const Point &p2, const Point &nextDir,
+                          float lineWidth, float scaleAbsX, float scaleAbsY, std::vector<SDL_Vertex> &outVerts, Color strokeColor)
+    {
+        Point dir = p2 - p1;
+        float len = dir.length();
+        if (len < 1e-6f)
+            return;
+        Point n = dir.perpendicularCCW().normalize();
+        float lwHalf = lineWidth * 0.5f;
+        Point offset = Point{n.x * lwHalf / scaleAbsX, n.y * lwHalf / scaleAbsY};
+
+        auto addV = [&](Point pt)
+        {
+            SDL_Vertex sv{};
+            sv.position = {pt.x, pt.y};
+            sv.color = strokeColor.toSDL_FColor();
+            outVerts.push_back(sv);
+        };
+
+        Point A = p1 + offset;
+        Point B = p1 - offset;
+        Point C = p2 - offset;
+        Point D = p2 + offset;
+        // quad
+        addV(A);
+        addV(B);
+        addV(D);
+        addV(B);
+        addV(C);
+        addV(D);
     }
 
     // ========== 各个Area子类 drawOnWindow 实现 ==========
@@ -245,7 +383,7 @@ namespace Xiao2D
             v[0].color = tmp.fillColor.toSDL_FColor();
             for (int i = 1; i <= N; i++)
             {
-                float a = 2.f * std::numbers::pi * i / N;
+                float a = 2.f * MATH_PI * i / N;
                 Point localPt{r * std::cos(a), r * std::sin(a)};
                 Point worldPt = localToWorld(localPt);
                 v[i].position.x = worldPt.x;
@@ -261,24 +399,22 @@ namespace Xiao2D
             }
             idx[3 * N - 1] = 1;
             SDL_RenderGeometry(renderer, nullptr, v.data(), (int)v.size(), idx.data(), (int)idx.size());
-
             DrawPen ringPen = pen;
             ringPen.isFilledWithBorder = false;
             ringPen.fillColor = pen.lineColor;
-            float innerRLocal = std::max(0.f, r - pen.lineWidth / std::fabs(scale.x));
-
+            float lw = pen.lineWidth;
+            float innerRLocal = std::max(0.f, r - lw * 0.5f / std::fabs(scale.x));
             std::vector<SDL_Vertex> rv;
             std::vector<int> ridx;
             for (int i = 0; i <= N; i++)
             {
-                float ang = 2.f * std::numbers::pi * i / N;
+                float ang = 2.f * MATH_PI * i / N;
                 Point outLocal{r * std::cos(ang), r * std::sin(ang)};
                 Point inLocal{innerRLocal * std::cos(ang), innerRLocal * std::sin(ang)};
                 SDL_Vertex vOut{};
                 vOut.position = {localToWorld(outLocal).x, localToWorld(outLocal).y};
                 vOut.color = ringPen.fillColor.toSDL_FColor();
                 rv.push_back(vOut);
-
                 SDL_Vertex vIn{};
                 vIn.position = {localToWorld(inLocal).x, localToWorld(inLocal).y};
                 vIn.color = ringPen.fillColor.toSDL_FColor();
@@ -317,7 +453,7 @@ namespace Xiao2D
             std::vector<int> idx;
             for (int i = 0; i <= seg; i++)
             {
-                float ang = 2.f * std::numbers::pi * i / seg;
+                float ang = 2.f * MATH_PI * i / seg;
                 Point outLocal{outerR * std::cos(ang), outerR * std::sin(ang)};
                 Point inLocal{innerR * std::cos(ang), innerR * std::sin(ang)};
                 SDL_Vertex vOut{};
@@ -325,7 +461,6 @@ namespace Xiao2D
                 vOut.position = {wOut.x, wOut.y};
                 vOut.color = tmp.fillColor.toSDL_FColor();
                 v.push_back(vOut);
-
                 SDL_Vertex vIn{};
                 Point wIn = localToWorld(inLocal);
                 vIn.position = {wIn.x, wIn.y};
@@ -346,16 +481,16 @@ namespace Xiao2D
                 idx.push_back(i1);
             }
             SDL_RenderGeometry(renderer, nullptr, v.data(), (int)v.size(), idx.data(), (int)idx.size());
-
             DrawPen strokePen = pen;
             strokePen.isFilledWithBorder = false;
             strokePen.fillColor = pen.lineColor;
-            float oInLocal = std::max(0.f, outerR - pen.lineWidth / std::fabs(scale.x));
+            float lwHalf = pen.lineWidth * 0.5f;
+            float oInLocal = std::max(0.f, outerR - lwHalf / std::fabs(scale.x));
             std::vector<SDL_Vertex> vo;
             std::vector<int> idxo;
             for (int i = 0; i <= seg; i++)
             {
-                float ang = 2.f * std::numbers::pi * i / seg;
+                float ang = 2.f * MATH_PI * i / seg;
                 Point oL{float(outerR * cos(ang)), float(outerR * sin(ang))};
                 Point iL{float(oInLocal * cos(ang)), float(oInLocal * sin(ang))};
                 vo.push_back({{localToWorld(oL).x, localToWorld(oL).y}, strokePen.fillColor.toSDL_FColor(), {0, 0}});
@@ -372,13 +507,12 @@ namespace Xiao2D
                 idxo.push_back(i1);
             }
             SDL_RenderGeometry(renderer, nullptr, vo.data(), (int)vo.size(), idxo.data(), (int)idxo.size());
-
-            float iInLocal = std::max(0.f, innerR - pen.lineWidth / std::fabs(scale.x));
+            float iInLocal = std::max(0.f, innerR - lwHalf / std::fabs(scale.x));
             std::vector<SDL_Vertex> vi;
             std::vector<int> idxi;
             for (int i = 0; i <= seg; i++)
             {
-                float ang = 2.f * std::numbers::pi * i / seg;
+                float ang = 2.f * MATH_PI * i / seg;
                 Point oL{float(innerR * cos(ang)), float(innerR * sin(ang))};
                 Point iL{float(iInLocal * cos(ang)), float(iInLocal * sin(ang))};
                 vi.push_back({{localToWorld(oL).x, localToWorld(oL).y}, strokePen.fillColor.toSDL_FColor(), {0, 0}});
@@ -416,7 +550,7 @@ namespace Xiao2D
             v[0].color = tmp.fillColor.toSDL_FColor();
             for (int i = 1; i <= N; i++)
             {
-                float ang = 2.f * std::numbers::pi * i / N;
+                float ang = 2.f * MATH_PI * i / N;
                 float c = std::cos(ang), s = std::sin(ang);
                 Point localPt{rx * c, ry * s};
                 Point worldPt = localToWorld(localPt);
@@ -433,18 +567,17 @@ namespace Xiao2D
             }
             idx[3 * N - 1] = 1;
             SDL_RenderGeometry(renderer, nullptr, v.data(), (int)v.size(), idx.data(), (int)idx.size());
-
             DrawPen ringPen = pen;
             ringPen.isFilledWithBorder = false;
             ringPen.fillColor = pen.lineColor;
-            float lw = pen.lineWidth;
-            float rxInLocal = std::max(0.f, rx - lw / std::fabs(scale.x));
-            float ryInLocal = std::max(0.f, ry - lw / std::fabs(scale.y));
+            float lwHalf = pen.lineWidth * 0.5f;
+            float rxInLocal = std::max(0.f, rx - lwHalf / std::fabs(scale.x));
+            float ryInLocal = std::max(0.f, ry - lwHalf / std::fabs(scale.y));
             std::vector<SDL_Vertex> verts;
             std::vector<int> strokeIdx;
             for (int i = 0; i <= N; i++)
             {
-                float ang = 2.f * std::numbers::pi * i / N;
+                float ang = 2.f * MATH_PI * i / N;
                 float c = std::cos(ang), s = std::sin(ang);
                 Point voLocal{rx * c, ry * s};
                 Point viLocal{rxInLocal * c, ryInLocal * s};
@@ -473,9 +606,26 @@ namespace Xiao2D
         int N = pen.circlePrecision;
         if (N < 3 || radius <= 0)
             return;
-        float span = endAng - startAng;
+
+        auto wrap = [](float a) -> float
+        {
+            while (a < 0)
+                a += 2.f * MATH_PI;
+            while (a >= 2.f * MATH_PI)
+                a -= 2.f * MATH_PI;
+            return a;
+        };
+        float a0 = wrap(startAng);
+        float a1 = wrap(endAng);
+        float span;
+        if (a1 >= a0)
+            span = a1 - a0;
+        else
+            span = (a1 + 2 * MATH_PI) - a0;
+
         if (std::fabs(span) < 1e-6f)
             return;
+
         if (pen.isFilledWithBorder)
         {
             DrawPen tmp = pen;
@@ -483,11 +633,11 @@ namespace Xiao2D
             std::vector<SDL_Vertex> verts;
             Point worldCenter = localToWorld({0, 0});
             verts.push_back({{worldCenter.x, worldCenter.y}, tmp.fillColor.toSDL_FColor(), {0, 0}});
-            int steps = std::max(3, (int)(std::fabs(span) / (2.f * std::numbers::pi) * N));
+            int steps = std::max(3, (int)(std::fabs(span) / (2.f * MATH_PI) * N));
             for (int i = 0; i <= steps; i++)
             {
-                float a = startAng + span * (float)i / steps;
-                Point localPt{radius * std::cos(a), radius * std::sin(a)};
+                float curAng = a0 + span * (float)i / steps;
+                Point localPt{radius * std::cos(curAng), radius * std::sin(curAng)};
                 Point worldPt = localToWorld(localPt);
                 SDL_Vertex v{};
                 v.position.x = worldPt.x;
@@ -503,6 +653,47 @@ namespace Xiao2D
                 idx.push_back(i + 1);
             }
             SDL_RenderGeometry(renderer, nullptr, verts.data(), (int)verts.size(), idx.data(), (int)idx.size());
+
+            // ====== 新增Sector描边实现 ======
+            DrawPen strokePen = pen;
+            strokePen.isFilledWithBorder = false;
+            strokePen.fillColor = pen.lineColor;
+            float lwHalf = pen.lineWidth * 0.5f;
+            std::vector<SDL_Vertex> strokeVerts;
+            // 圆弧描边
+            for (int i = 0; i <= steps; i++)
+            {
+                float curAng = a0 + span * (float)i / steps;
+                Point outer{radius * std::cos(curAng), radius * std::sin(curAng)};
+                Point inner{(radius - lwHalf / std::fabs(scale.x)) * std::cos(curAng), (radius - lwHalf / std::fabs(scale.y)) * std::sin(curAng)};
+                auto wo = localToWorld(outer);
+                auto wi = localToWorld(inner);
+                strokeVerts.push_back({{wo.x, wo.y}, strokePen.fillColor.toSDL_FColor(), {0, 0}});
+                strokeVerts.push_back({{wi.x, wi.y}, strokePen.fillColor.toSDL_FColor(), {0, 0}});
+            }
+            std::vector<int> strokeIdx;
+            for (int i = 0; i < steps; i++)
+            {
+                int o0 = i * 2, i0 = i * 2 + 1, o1 = (i + 1) * 2, i1 = (i + 1) * 2 + 1;
+                strokeIdx.push_back(o0);
+                strokeIdx.push_back(i0);
+                strokeIdx.push_back(o1);
+                strokeIdx.push_back(o1);
+                strokeIdx.push_back(i0);
+                strokeIdx.push_back(i1);
+            }
+            SDL_RenderGeometry(renderer, nullptr, strokeVerts.data(), (int)strokeVerts.size(), strokeIdx.data(), (int)strokeIdx.size());
+
+            // 两条径向边
+            Point p0_local{radius * std::cos(a0), radius * std::sin(a0)};
+            Point p1_local{radius * std::cos(a1), radius * std::sin(a1)};
+            Point wc = localToWorld({0, 0});
+            Point wp0 = localToWorld(p0_local);
+            Point wp1 = localToWorld(p1_local);
+            std::vector<SDL_Vertex> sideVerts;
+            buildSimpleLineStrip(wc, wp0, {0, 0}, pen.lineWidth, std::fabs(scale.x), std::fabs(scale.y), sideVerts, strokePen.fillColor);
+            buildSimpleLineStrip(wc, wp1, {0, 0}, pen.lineWidth, std::fabs(scale.x), std::fabs(scale.y), sideVerts, strokePen.fillColor);
+            win->submitGeometry(sideVerts);
         }
     }
 
@@ -542,34 +733,16 @@ namespace Xiao2D
         borderPen.isFilledWithBorder = false;
         borderPen.fillColor = pen.lineColor;
         float scaleAbsX = std::fabs(scale.x);
+        float scaleAbsY = std::fabs(scale.y);
         for (int i = 0; i < 4; i++)
         {
             int j = (i + 1) % 4;
             Point p1 = worldVerts[i], p2 = worldVerts[j];
             float lw = borderPen.lineWidth;
-            if (lw <= 0 || scaleAbsX < 1e-6f)
+            if (lw <= 0 || scaleAbsX < 1e-6f || scaleAbsY < 1e-6f)
                 continue;
             std::vector<SDL_Vertex> segVerts;
-            auto addV = [&](Point pt)
-            {
-                SDL_Vertex sv{};
-                sv.position = {pt.x, pt.y};
-                sv.color = borderPen.fillColor.toSDL_FColor();
-                segVerts.push_back(sv);
-            };
-            Point dir = p2 - p1;
-            float len = dir.length();
-            if (len < 1e-6f)
-                continue;
-            Point n = dir.perpendicularCCW().normalize();
-            Point off = n * (lw * 0.5f / scaleAbsX);
-            Point A = p1 + off, B = p1 - off, C = p2 - off, D = p2 + off;
-            addV(A);
-            addV(B);
-            addV(D);
-            addV(B);
-            addV(C);
-            addV(D);
+            buildSimpleLineStrip(p1, p2, {}, lw, scaleAbsX, scaleAbsY, segVerts, borderPen.fillColor);
             win->submitGeometry(segVerts);
         }
     }
@@ -587,7 +760,6 @@ namespace Xiao2D
         {
             worldPts.push_back(localToWorld(lp));
         }
-
         if (pen.isFilledWithBorder)
         {
             DrawPen tmp = pen;
@@ -618,67 +790,44 @@ namespace Xiao2D
         borderPen.isFilledWithBorder = false;
         borderPen.fillColor = pen.lineColor;
         float scaleAbsX = std::fabs(scale.x);
+        float scaleAbsY = std::fabs(scale.y);
         for (size_t i = 0; i < count; i++)
         {
             size_t j = (i + 1) % count;
             Point p1 = worldPts[i], p2 = worldPts[j];
             float lw = borderPen.lineWidth;
-            if (lw <= 0 || scaleAbsX < 1e-6f)
+            if (lw <= 0 || scaleAbsX < 1e-6f || scaleAbsY < 1e-6f)
                 continue;
             std::vector<SDL_Vertex> segVerts;
-            auto addV = [&](Point pt)
-            {
-                SDL_Vertex sv{};
-                sv.position = {pt.x, pt.y};
-                sv.color = borderPen.fillColor.toSDL_FColor();
-                segVerts.push_back(sv);
-            };
-            Point dir = p2 - p1;
-            float len = dir.length();
-            if (len < 1e-6f)
-                continue;
-            Point n = dir.perpendicularCCW().normalize();
-            Point off = n * (lw * 0.5f / scaleAbsX);
-            Point A = p1 + off, B = p1 - off, C = p2 - off, D = p2 + off;
-            addV(A);
-            addV(B);
-            addV(D);
-            addV(B);
-            addV(C);
-            addV(D);
+            buildSimpleLineStrip(p1, p2, {}, lw, scaleAbsX, scaleAbsY, segVerts, borderPen.fillColor);
             win->submitGeometry(segVerts);
         }
     }
 
-    bool Text::contains(const Point &p) const
+    void Text::drawOnWindow(const Window *win, const DrawPen &pen) const
     {
-        // TODO
-        return false;
-    }
-    void Xiao2D::Text::drawOnWindow(const Window *win, const DrawPen &pen) const
-    {
-        TTF_Font *font = pen.getFont(pen.fontPath);
+        SDL_Renderer *renderer = win->_renderer;
+        if (!renderer)
+            return;
+        if (!win->_textEngineValid)
+        {
+            std::cerr << "[Xiao2D::Text::drawOnWindow] _textEngine无效，跳过文本渲染" << std::endl;
+            return;
+        }
+        TTF_Font *font = DrawPen::getFont(pen.fontPath, pen.fontSize);
         if (!font)
         {
-            std::cerr << "[Xiao2D::Text::drawOnWindow]无法找到字体: " << pen.fontPath << std::endl;
-            std::cerr << "[Xiao2D::Text::drawOnWindow]尝试加载字体: " << pen.fontPath << std::endl;
-            if (!pen.loadFont(pen.fontPath, pen.fontSize))
+            std::cerr << "[Xiao2D::Text::drawOnWindow]无法找到字体: " << pen.fontPath << " size=" << pen.fontSize << std::endl;
+            if (!DrawPen::loadFont(pen.fontPath, pen.fontSize))
             {
-                std::cerr << "[Xiao2D::Text::drawOnWindow]无法加载字体: " << pen.fontPath << std::endl;
+                std::cerr << "[Xiao2D::Text::drawOnWindow]尝试加载字体失败: " << pen.fontPath << std::endl;
                 return;
             }
-            else
+            font = DrawPen::getFont(pen.fontPath, pen.fontSize);
+            if (!font)
             {
-                font = pen.getFont(pen.fontPath);
-                if (font)
-                {
-                    std::cerr << "[Xiao2D::Text::drawOnWindow]字体加载成功: " << pen.fontPath << std::endl;
-                }
-                else
-                {
-                    std::cerr << "[Xiao2D::Text::drawOnWindow]字体加载失败: " << pen.fontPath << std::endl;
-                    return;
-                }
+                std::cerr << "[Xiao2D::Text::drawOnWindow]加载后依然获取字体失败" << std::endl;
+                return;
             }
         }
         TTF_Text *textObj = TTF_CreateText(win->_textEngine, font, this->content.c_str(), SDL_strlen(this->content.c_str()));
@@ -696,41 +845,12 @@ namespace Xiao2D
         }
         TTF_DestroyText(textObj);
     }
-    std::vector<std::pair<std::string, TTF_Font *>> DrawPen::fontsLoadList;
-    bool DrawPen::loadFont(const std::string &fontPath, int fontSize)
-    {
-        TTF_Font *font = getFont(fontPath);
-        if (font)
-        {
-            if (TTF_SetFontSize(font, fontSize))
-                return true;
-            else
-                std::cerr << "无法设置字体大小: " << fontSize << "，错误: " << SDL_GetError() << std::endl;
-        }
-        font = TTF_OpenFont(fontPath.c_str(), fontSize);
-        if (!font)
-        {
-            std::cerr << "无法加载字体: " << fontPath << "，错误: " << SDL_GetError() << std::endl;
-            return false;
-        }
-        fontsLoadList.emplace_back(fontPath, font);
-        return true;
-    }
-    TTF_Font *DrawPen::getFont(const std::string &fontPath)
-    {
-        for (const auto &pair : fontsLoadList)
-        {
-            if (pair.first == fontPath)
-            {
-                return pair.second;
-            }
-        }
-        return nullptr;
-    }
+
     //======== Window实现 ========
     Window::Window() : Window("none", 800, 600) {}
     Window::Window(const std::string _title, int _width, int _height)
         : title(_title), width(_width), height(_height) {}
+
     void Window::create()
     {
         if (!SDL_CreateWindowAndRenderer(title.c_str(), width, height, SDL_WINDOW_RESIZABLE, &_window, &_renderer))
@@ -744,14 +864,25 @@ namespace Xiao2D
         this->_textEngine = TTF_CreateRendererTextEngine(_renderer);
         if (!this->_textEngine)
         {
-            std::cerr << "无法创建文本渲染引擎: " << SDL_GetError() << std::endl;
+            std::cerr << "[Window::create]无法创建文本渲染引擎: " << SDL_GetError() << std::endl;
+            _textEngineValid = false;
+        }
+        else
+        {
+            _textEngineValid = true;
         }
     }
+
     void Window::destroy()
     {
-        if (_renderer)
+        if (_textEngineValid && _textEngine)
         {
             TTF_DestroyRendererTextEngine(this->_textEngine);
+            _textEngine = nullptr;
+            _textEngineValid = false;
+        }
+        if (_renderer)
+        {
             SDL_DestroyRenderer(_renderer);
             _renderer = nullptr;
         }
@@ -761,20 +892,26 @@ namespace Xiao2D
             _window = nullptr;
         }
     }
+
     void Window::submitGeometry(const std::vector<SDL_Vertex> &verts) const
     {
         if (!_renderer)
             return;
         if (verts.size() % 3 != 0)
+        {
+            std::cerr << "[Window::submitGeometry] 顶点数量不是3的倍数，丢弃绘制！verts.size=" << verts.size() << std::endl;
             return;
+        }
         SDL_RenderGeometry(_renderer, nullptr, verts.data(), (int)verts.size(), nullptr, 0);
     }
+
     void Window::eraseAll(const DrawPen &drawPen)
     {
         SDL_SetRenderDrawColorFloat(_renderer,
                                     drawPen.eraseColor.r, drawPen.eraseColor.g, drawPen.eraseColor.b, drawPen.eraseColor.a);
         SDL_RenderClear(_renderer);
     }
+
     void Window::draw(const Area &area, const DrawPen &drawPen)
     {
         if (!_renderer)
@@ -798,12 +935,14 @@ namespace Xiao2D
     {
         draw(point, drawPen);
     }
+
     //==== App静态成员定义 ====
     std::vector<Window *> App::wins;
     Uint64 App::perfFreq = 0;
     Uint64 App::lastPerfCount = 0;
     float App::deltaTime = 0.0f;
     float App::fps = 0.0f;
+    bool App::running = false;
 
     Point App::getMouseGlobalPos()
     {
@@ -811,12 +950,12 @@ namespace Xiao2D
         SDL_GetGlobalMouseState(&p.x, &p.y);
         return p;
     }
-
     Point App::getMouseWindowPos(const Window *win)
     {
-        if(!win){
-            std::cerr<<"[Xiao2D::App::getMouseWindowPos]传入参数 Xiao2D::Window *win 为空"<<std::endl;
-            return Point{0,0};
+        if (!win)
+        {
+            std::cerr << "[Xiao2D::App::getMouseWindowPos]传入参数 Xiao2D::Window *win 为空" << std::endl;
+            return Point{0, 0};
         }
         Point pg = getMouseGlobalPos();
         int x, y;
@@ -840,6 +979,7 @@ namespace Xiao2D
         }
         return 0;
     }
+
     void App::addWindow(Window *win)
     {
         if (!win)
@@ -847,11 +987,13 @@ namespace Xiao2D
         win->create();
         wins.push_back(win);
     }
+
     void App::addWindow(Window *wins[], int winNum)
     {
         for (int i = 0; i < winNum; i++)
             addWindow(wins[i]);
     }
+
     Window *App::findWindowByID(Uint32 windowId)
     {
         for (auto w : wins)
@@ -865,6 +1007,7 @@ namespace Xiao2D
         }
         return nullptr;
     }
+
     void App::quit()
     {
         for (auto w : wins)
@@ -879,7 +1022,6 @@ namespace Xiao2D
     float App::getDeltaTime() { return deltaTime; }
     float App::getFPS() { return fps; }
 
-    bool App::running = false;
     void App::run()
     {
         running = true;
